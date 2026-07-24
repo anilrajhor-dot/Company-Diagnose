@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Ledger — Financial Statement Intelligence</title>
+<title>Infosys Limited — Financial Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -183,10 +183,10 @@ input[type=file]{display:none;}
 
 <div class="spine">
   <div class="brand">
-    <div class="mark">L</div>
+    <div class="mark" id="brandMark">L</div>
     <div>
-      <h1>The Ledger</h1>
-      <div class="sub">Statement Intelligence &amp; Variance Reasoning</div>
+      <h1 id="brandName">The Ledger</h1>
+      <div class="sub" id="brandSub">Statement Intelligence &amp; Variance Reasoning</div>
     </div>
   </div>
   <div class="timestamp" id="tsBox">No statements analyzed yet</div>
@@ -302,6 +302,10 @@ input[type=file]{display:none;}
   <h4 id="noteTitle">—</h4>
   <div class="n-body" id="noteBody">—</div>
   <div class="n-nums" id="noteNums"></div>
+</div>
+
+<div style="text-align:center;padding:18px 20px 30px;font-size:11px;color:var(--muted);letter-spacing:0.3px;">
+  Developed by <span style="color:var(--text-ink);font-weight:600;">Anil Sharma</span> — Former General Manager, Central Bank of India
 </div>
 
 <script>
@@ -464,6 +468,12 @@ function enterDashboard(){
   document.getElementById('shell').classList.add('active');
   const now = new Date();
   document.getElementById('tsBox').innerHTML = `Analysis current as of<br><b>${now.toLocaleString()}</b>`;
+  const coFull = financials.co || 'Uploaded company';
+  const coShort = coFull.split(/[—-]/)[0].trim();
+  document.title = coShort + ' — Financial Intelligence';
+  document.getElementById('brandName').textContent = coShort;
+  document.getElementById('brandSub').textContent = 'Statement Intelligence & Variance Reasoning';
+  document.getElementById('brandMark').textContent = coShort.charAt(0).toUpperCase();
   document.getElementById('coName').textContent = financials.co || 'Uploaded company';
   if(financials.pBS){
     document.getElementById('coPeriods').textContent = `P&L/cash flow: ${(financials.p||[]).join(' → ')}  ·  Balance sheet: ${(financials.pBS||[]).join(' → ')}`;
