@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-title" content="Financial Intel" id="appTitleMeta">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Infosys Limited — Financial Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
@@ -198,7 +200,6 @@ input[type=file]{display:none;}
     <div class="eyebrow">Upload · Extract · Interrogate</div>
     <h2>Turn any set of financial statements into four working dashboards.</h2>
     <p>Drop in income statements, balance sheets, cash flow statements or trial balances — as Excel, CSV or PDF. This reconciles them into one model, then builds a dedicated view for management, bankers, investors and auditors. Click any bar or line to see why it moved.</p>
-    <p style="color:var(--gold);font-size:13px;">Infosys Limited's Q1 FY27 standalone filing is already loaded below. Upload new statements here any time to replace it.</p>
   </div>
 
   <div class="drop" id="drop">
@@ -225,7 +226,7 @@ input[type=file]{display:none;}
       <h2 class="display" style="margin:4px 0 0;font-size:26px;" id="coPeriods">—</h2>
     </div>
     <div class="topbar-actions">
-      <button class="small-btn" id="backBtn">← Upload new statements</button>
+      <button class="small-btn" id="backBtn">← Clear data &amp; upload new statements</button>
     </div>
   </div>
 
@@ -433,15 +434,20 @@ async function callClaude(userText){
 document.getElementById('analyzeBtn').addEventListener('click', analyze);
 document.getElementById('demoBtn').addEventListener('click', ()=>{ financials = demoData(); enterDashboard(); });
 
-/* Auto-load the Infosys Q1 FY27 filing that was analyzed for this session */
-window.addEventListener('DOMContentLoaded', ()=>{
-  financials = infosysData();
-  enterDashboard();
-});
-document.getElementById('backBtn').addEventListener('click', ()=>{
+document.getElementById('backBtn').addEventListener('click', clearData);
+function clearData(){
+  financials = null;
+  uploadedFiles = [];
+  Object.keys(charts).forEach(id=>destroy(id));
+  renderFileList();
   document.getElementById('shell').classList.remove('active');
   document.getElementById('stage').style.display = 'block';
-});
+  document.getElementById('tsBox').textContent = 'No statements analyzed yet';
+  document.title = 'Financial Intelligence';
+  const appTitleMeta = document.getElementById('appTitleMeta');
+  if(appTitleMeta) appTitleMeta.setAttribute('content', 'Financial Intel');
+  document.getElementById('statusText').textContent = '';
+}
 
 async function analyze(){
   const ready = uploadedFiles.filter(f=>f.status==='ready');
@@ -463,14 +469,25 @@ async function analyze(){
 }
 
 /* ============================= DASHBOARD RENDER ============================= */
+function shortCompanyName(full){
+  let s = full.split(/[—–-]/)[0].trim();
+  s = s.replace(/\s*\((in\s*[^)]*)\)\s*/gi, '').trim();
+  s = s.replace(/\b(Limited|Ltd\.?|Incorporated|Inc\.?|Corporation|Corp\.?|PLC|LLC|Co\.?|Company|Standalone|Consolidated)\b\.?/gi, '').trim();
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  if(!s) s = full.split(/[—–-]/)[0].trim();
+  return s;
+}
+
 function enterDashboard(){
   document.getElementById('stage').style.display = 'none';
   document.getElementById('shell').classList.add('active');
   const now = new Date();
   document.getElementById('tsBox').innerHTML = `Analysis current as of<br><b>${now.toLocaleString()}</b>`;
   const coFull = financials.co || 'Uploaded company';
-  const coShort = coFull.split(/[—-]/)[0].trim();
+  const coShort = shortCompanyName(coFull);
   document.title = coShort + ' — Financial Intelligence';
+  const appTitleMeta = document.getElementById('appTitleMeta');
+  if(appTitleMeta) appTitleMeta.setAttribute('content', coShort);
   document.getElementById('brandName').textContent = coShort;
   document.getElementById('brandSub').textContent = 'Statement Intelligence & Variance Reasoning';
   document.getElementById('brandMark').textContent = coShort.charAt(0).toUpperCase();
