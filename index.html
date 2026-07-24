@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Ledger — Financial Statement Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{
+  --ink:#0B1220; --ink-2:#111B2E; --ink-3:#182643;
+  --paper:#F4EFE2; --paper-2:#EAE2CC; --paper-line:#D8CBA8;
+  --green:#1F6F54; --green-d:#153F31;
+  --rust:#9A3E22; --rust-d:#6E2A17;
+  --gold:#C9A227; --gold-d:#8C7016;
+  --bank:#2C4A66; --bank-d:#1B2E42;
+  --text-ink:#ECE7D8; --text-paper:#20293A; --muted:#8992A6; --muted-2:#6B7280;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--ink);color:var(--text-ink);font-family:'IBM Plex Sans',sans-serif;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+h1,h2,h3,.display{font-family:'Fraunces',serif;}
+::selection{background:var(--gold);color:#111;}
+
+/* ---------- Spine / header ---------- */
+.spine{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:22px 36px;border-bottom:1px solid rgba(237,234,225,0.12);
+  background:linear-gradient(180deg,var(--ink-2),var(--ink));
+}
+.spine .brand{display:flex;align-items:center;gap:14px;}
+.brand .mark{
+  width:40px;height:40px;border-radius:3px;border:1.5px solid var(--gold);
+  display:flex;align-items:center;justify-content:center;color:var(--gold);
+  font-family:'Fraunces',serif;font-weight:700;font-size:20px;transform:rotate(-2deg);
+}
+.brand h1{font-size:22px;margin:0;letter-spacing:0.3px;font-weight:600;}
+.brand .sub{font-size:12px;color:var(--muted);margin-top:2px;letter-spacing:1.5px;text-transform:uppercase;}
+.timestamp{font-size:11px;color:var(--muted);text-align:right;line-height:1.5;}
+.timestamp b{color:var(--text-ink);}
+
+/* ---------- Upload stage ---------- */
+.stage{max-width:960px;margin:0 auto;padding:60px 28px 100px;}
+.stage-head{margin-bottom:34px;}
+.stage-head .eyebrow{color:var(--gold);font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:600;}
+.stage-head h2{font-size:38px;margin:10px 0 8px;line-height:1.15;font-weight:600;}
+.stage-head p{color:var(--muted);max-width:560px;font-size:15px;line-height:1.6;}
+
+.drop{
+  border:1.5px dashed rgba(237,234,225,0.3);border-radius:6px;padding:44px 30px;
+  text-align:center;cursor:pointer;transition:.15s;background:rgba(255,255,255,0.02);
+}
+.drop:hover, .drop.drag{border-color:var(--gold);background:rgba(201,162,39,0.06);}
+.drop .icon{font-size:30px;color:var(--gold);margin-bottom:10px;}
+.drop .lead{font-size:15px;font-weight:500;}
+.drop .fine{font-size:12px;color:var(--muted);margin-top:6px;}
+input[type=file]{display:none;}
+
+.filelist{margin-top:20px;display:flex;flex-direction:column;gap:8px;}
+.filerow{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--ink-2);border:1px solid rgba(237,234,225,0.1);border-radius:4px;
+  padding:10px 14px;font-size:13px;
+}
+.filerow .name{display:flex;align-items:center;gap:10px;}
+.filerow .tag{font-size:10px;padding:2px 6px;border-radius:2px;background:var(--green-d);color:#BFE6D6;letter-spacing:0.5px;text-transform:uppercase;}
+.filerow .remove{color:var(--muted);cursor:pointer;background:none;border:none;font-size:16px;}
+.filerow .remove:hover{color:var(--rust);}
+
+.actions{margin-top:26px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.btn{
+  font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:14px;border:none;
+  padding:13px 24px;border-radius:4px;cursor:pointer;transition:.15s;letter-spacing:0.2px;
+}
+.btn-primary{background:var(--gold);color:#1B1608;}
+.btn-primary:hover{background:#DDB233;}
+.btn-primary:disabled{background:#4a4636;color:#8b8770;cursor:not-allowed;}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid rgba(237,234,225,0.25);}
+.btn-ghost:hover{color:var(--text-ink);border-color:var(--text-ink);}
+.status{font-size:13px;color:var(--muted);}
+.status.err{color:#E28066;}
+
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(237,234,225,.25);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin-right:8px;vertical-align:-2px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ---------- Dashboard shell ---------- */
+.shell{display:none;max-width:1400px;margin:0 auto;padding:28px 28px 80px;position:relative;}
+.shell.active{display:block;}
+
+.persona-row{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid rgba(237,234,225,0.12);}
+.ptab{
+  padding:14px 22px 12px;cursor:pointer;font-size:13px;font-weight:600;letter-spacing:0.5px;
+  text-transform:uppercase;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;
+  display:flex;align-items:center;gap:9px;transition:.15s;
+}
+.ptab .seal{width:9px;height:9px;border-radius:50%;}
+.ptab:hover{color:var(--text-ink);}
+.ptab.active{color:var(--text-ink);}
+.ptab[data-p=mgmt] .seal{background:var(--green);}
+.ptab[data-p=bank] .seal{background:var(--bank);}
+.ptab[data-p=inv] .seal{background:var(--gold);}
+.ptab[data-p=aud] .seal{background:var(--rust);}
+.ptab[data-p=mgmt].active{border-color:var(--green);}
+.ptab[data-p=bank].active{border-color:var(--bank);}
+.ptab[data-p=inv].active{border-color:var(--gold);}
+.ptab[data-p=aud].active{border-color:var(--rust);}
+
+.persona-panel{display:none;padding-top:26px;}
+.persona-panel.active{display:block;}
+
+.summary-strip{
+  background:var(--paper);color:var(--text-paper);border-radius:6px;padding:18px 22px;
+  font-family:'Fraunces',serif;font-size:16px;line-height:1.5;margin-bottom:22px;position:relative;
+  border-left:5px solid var(--accent, var(--green));
+}
+.summary-strip .label{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;
+  color:var(--muted-2);display:block;margin-bottom:6px;
+}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px;}
+.kpi{
+  background:var(--ink-2);border:1px solid rgba(237,234,225,0.1);border-radius:6px;padding:16px 18px;
+  border-top:3px solid var(--accent,var(--green));
+}
+.kpi .k-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.kpi .k-val{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;margin-top:6px;}
+.kpi .k-delta{font-size:12px;margin-top:4px;}
+.k-delta.up{color:#7CC9A3;}
+.k-delta.down{color:#E28066;}
+.k-delta.flat{color:var(--muted);}
+
+.chart-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px;}
+.chart-grid.thirds{grid-template-columns:1fr 1fr;}
+.card{
+  background:var(--ink-2);border:1px solid rgba(237,234,225,0.1);border-radius:6px;padding:18px 20px 10px;
+}
+.card h3{font-size:14px;margin:0 0 2px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;}
+.card .hint{font-size:11px;color:var(--muted);margin-bottom:12px;}
+.card .chart-wrap{position:relative;height:230px;}
+
+.flag-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.flag-list li{
+  background:rgba(154,62,34,0.12);border:1px solid rgba(154,62,34,0.35);border-radius:4px;
+  padding:10px 14px;font-size:13px;color:#F0CBBB;display:flex;gap:10px;
+}
+.flag-list li::before{content:"⚠";color:var(--rust);flex-shrink:0;}
+
+@media(max-width:860px){.chart-grid,.chart-grid.thirds{grid-template-columns:1fr;}}
+
+/* ---------- Margin note (variance drawer) ---------- */
+.note-overlay{
+  position:fixed;inset:0;background:rgba(11,18,32,0.55);display:none;z-index:40;
+}
+.note-overlay.show{display:block;}
+.note{
+  position:fixed;top:0;right:-380px;width:360px;height:100%;background:var(--paper);color:var(--text-paper);
+  z-index:41;box-shadow:-8px 0 30px rgba(0,0,0,0.4);transition:right .28s cubic-bezier(.2,.8,.2,1);
+  padding:26px 26px 26px;overflow-y:auto;
+}
+.note.show{right:0;}
+.note .pin{width:16px;height:16px;border-radius:50%;background:var(--rust);position:absolute;top:18px;left:18px;box-shadow:0 2px 4px rgba(0,0,0,0.3);}
+.note .close{position:absolute;top:18px;right:18px;background:none;border:none;font-size:20px;color:var(--muted-2);cursor:pointer;}
+.note .n-label{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted-2);margin:36px 0 4px;display:block;}
+.note h4{font-family:'Fraunces',serif;font-size:22px;margin:0 0 14px;}
+.note .n-body{font-family:'Caveat',cursive;font-size:22px;line-height:1.45;color:#33261A;border-top:1px dashed var(--paper-line);padding-top:14px;}
+.note .n-nums{font-family:'IBM Plex Mono',monospace;font-size:13px;margin-top:18px;color:var(--muted-2);}
+
+/* ---------- misc ---------- */
+.topbar-actions{display:flex;gap:10px;}
+.small-btn{
+  font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;color:var(--muted);
+  background:none;border:1px solid rgba(237,234,225,0.2);border-radius:3px;padding:7px 12px;cursor:pointer;
+}
+.small-btn:hover{color:var(--text-ink);border-color:var(--text-ink);}
+</style>
+</head>
+<body>
+
+<div class="spine">
+  <div class="brand">
+    <div class="mark">L</div>
+    <div>
+      <h1>The Ledger</h1>
+      <div class="sub">Statement Intelligence &amp; Variance Reasoning</div>
+    </div>
+  </div>
+  <div class="timestamp" id="tsBox">No statements analyzed yet</div>
+</div>
+
+<!-- UPLOAD STAGE -->
+<div class="stage" id="stage">
+  <div class="stage-head">
+    <div class="eyebrow">Upload · Extract · Interrogate</div>
+    <h2>Turn any set of financial statements into four working dashboards.</h2>
+    <p>Drop in income statements, balance sheets, cash flow statements or trial balances — as Excel, CSV or PDF. The Ledger reconciles them into one model, then builds a dedicated view for management, bankers, investors and auditors. Click any bar or line to see why it moved.</p>
+    <p style="color:var(--gold);font-size:13px;">Infosys Limited's Q1 FY27 standalone filing is already loaded below. Upload new statements here any time to replace it.</p>
+  </div>
+
+  <div class="drop" id="drop">
+    <div class="icon">⌘</div>
+    <div class="lead">Drag files here, or click to browse</div>
+    <div class="fine">.xlsx · .xls · .csv · .pdf — multiple files supported</div>
+    <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv,.pdf">
+  </div>
+
+  <div class="filelist" id="fileList"></div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="analyzeBtn" disabled>Build dashboards</button>
+    <button class="btn btn-ghost" id="demoBtn">Use fictional sample company instead</button>
+    <span class="status" id="statusText"></span>
+  </div>
+</div>
+
+<!-- DASHBOARD SHELL -->
+<div class="shell" id="shell">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div class="eyebrow" style="color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;" id="coName">—</div>
+      <h2 class="display" style="margin:4px 0 0;font-size:26px;" id="coPeriods">—</h2>
+    </div>
+    <div class="topbar-actions">
+      <button class="small-btn" id="backBtn">← Upload new statements</button>
+    </div>
+  </div>
+
+  <div class="persona-row" id="personaRow">
+    <div class="ptab active" data-p="mgmt"><span class="seal"></span> Management</div>
+    <div class="ptab" data-p="bank"><span class="seal"></span> Bankers</div>
+    <div class="ptab" data-p="inv"><span class="seal"></span> Investors</div>
+    <div class="ptab" data-p="aud"><span class="seal"></span> Auditors</div>
+  </div>
+
+  <!-- MANAGEMENT -->
+  <div class="persona-panel active" id="panel-mgmt">
+    <div class="summary-strip" style="--accent:var(--green);"><span class="label">Reading for management</span><span id="sum-mgmt"></span></div>
+    <div class="kpi-grid" id="kpi-mgmt" style="--accent:var(--green);"></div>
+    <div class="chart-grid">
+      <div class="card"><h3>Revenue vs. operating expense</h3><div class="hint">Click a bar for the variance reason</div><div class="chart-wrap"><canvas id="c-mgmt-1"></canvas></div></div>
+      <div class="card"><h3>Margin trend</h3><div class="hint">Gross vs. net margin, %</div><div class="chart-wrap"><canvas id="c-mgmt-2"></canvas></div></div>
+    </div>
+    <div class="chart-grid thirds">
+      <div class="card"><h3>EBITDA trend</h3><div class="hint">Click a point for the driver</div><div class="chart-wrap"><canvas id="c-mgmt-3"></canvas></div></div>
+      <div class="card"><h3>Cost structure, latest period</h3><div class="hint">COGS vs. operating expense split</div><div class="chart-wrap"><canvas id="c-mgmt-4"></canvas></div></div>
+    </div>
+  </div>
+
+  <!-- BANKERS -->
+  <div class="persona-panel" id="panel-bank">
+    <div class="summary-strip" style="--accent:var(--bank);"><span class="label">Reading for lenders</span><span id="sum-bank"></span></div>
+    <div class="kpi-grid" id="kpi-bank" style="--accent:var(--bank);"></div>
+    <div class="chart-grid">
+      <div class="card"><h3>Liquidity: current &amp; quick ratio</h3><div class="hint">Click a point for the driver</div><div class="chart-wrap"><canvas id="c-bank-1"></canvas></div></div>
+      <div class="card"><h3>Leverage: debt / equity</h3><div class="hint">Click a bar for the variance reason</div><div class="chart-wrap"><canvas id="c-bank-2"></canvas></div></div>
+    </div>
+    <div class="chart-grid thirds">
+      <div class="card"><h3>Cash flow composition</h3><div class="hint">Operating / investing / financing</div><div class="chart-wrap"><canvas id="c-bank-3"></canvas></div></div>
+      <div class="card"><h3>Interest coverage</h3><div class="hint">EBITDA ÷ interest burden, click for reason</div><div class="chart-wrap"><canvas id="c-bank-4"></canvas></div></div>
+    </div>
+  </div>
+
+  <!-- INVESTORS -->
+  <div class="persona-panel" id="panel-inv">
+    <div class="summary-strip" style="--accent:var(--gold);"><span class="label">Reading for investors</span><span id="sum-inv"></span></div>
+    <div class="kpi-grid" id="kpi-inv" style="--accent:var(--gold);"></div>
+    <div class="chart-grid">
+      <div class="card"><h3>Net income trend</h3><div class="hint">Click a bar for the variance reason</div><div class="chart-wrap"><canvas id="c-inv-1"></canvas></div></div>
+      <div class="card"><h3>Return on equity &amp; assets</h3><div class="hint">Click a point for the driver</div><div class="chart-wrap"><canvas id="c-inv-2"></canvas></div></div>
+    </div>
+    <div class="chart-grid thirds">
+      <div class="card"><h3>Revenue growth, YoY %</h3><div class="hint">Click a bar for the reason</div><div class="chart-wrap"><canvas id="c-inv-3"></canvas></div></div>
+      <div class="card"><h3>Free cash flow trend</h3><div class="hint">Click a point for the driver</div><div class="chart-wrap"><canvas id="c-inv-4"></canvas></div></div>
+    </div>
+  </div>
+
+  <!-- AUDITORS -->
+  <div class="persona-panel" id="panel-aud">
+    <div class="summary-strip" style="--accent:var(--rust);"><span class="label">Reading for auditors</span><span id="sum-aud"></span></div>
+    <div class="kpi-grid" id="kpi-aud" style="--accent:var(--rust);"></div>
+    <div class="chart-grid">
+      <div class="card"><h3>Balance check: assets vs. liabilities + equity</h3><div class="hint">Bars should match each period — click for detail</div><div class="chart-wrap"><canvas id="c-aud-1"></canvas></div></div>
+      <div class="card"><h3>Margin volatility</h3><div class="hint">Period-over-period swing in gross margin, pts</div><div class="chart-wrap"><canvas id="c-aud-2"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <h3>Flags for follow-up</h3><div class="hint">Items worth a closer look this cycle</div>
+      <ul class="flag-list" id="flagList"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- MARGIN NOTE DRAWER -->
+<div class="note-overlay" id="noteOverlay"></div>
+<div class="note" id="note">
+  <div class="pin"></div>
+  <button class="close" id="noteClose">×</button>
+  <span class="n-label" id="noteLabel">Variance note</span>
+  <h4 id="noteTitle">—</h4>
+  <div class="n-body" id="noteBody">—</div>
+  <div class="n-nums" id="noteNums"></div>
+</div>
+
+<script>
+/* ============================= STATE ============================= */
+let uploadedFiles = [];   // {name, kind, text}
+let financials = null;    // parsed model
+let charts = {};
+const ACCENTS = {mgmt:'#1F6F54', bank:'#2C4A66', inv:'#C9A227', aud:'#9A3E22'};
+
+/* ============================= FILE HANDLING ============================= */
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const fileListEl = document.getElementById('fileList');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const statusText = document.getElementById('statusText');
+
+drop.addEventListener('click', ()=>fileInput.click());
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');}));
+drop.addEventListener('drop', e=>{ handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e=>handleFiles(e.target.files));
+
+function extOf(name){ return name.split('.').pop().toLowerCase(); }
+
+async function handleFiles(fileArr){
+  for(const f of Array.from(fileArr)){
+    const ext = extOf(f.name);
+    if(!['xlsx','xls','csv','pdf'].includes(ext)){ continue; }
+    const entry = {name:f.name, kind:ext, text:'', status:'reading'};
+    uploadedFiles.push(entry);
+    renderFileList();
+    try{
+      if(ext==='csv'){
+        entry.text = await readAsText(f);
+      } else if(ext==='xlsx'||ext==='xls'){
+        const buf = await readAsArrayBuffer(f);
+        const wb = XLSX.read(buf, {type:'array'});
+        let out = '';
+        wb.SheetNames.forEach(name=>{
+          out += `\n--- sheet: ${name} ---\n`;
+          out += XLSX.utils.sheet_to_csv(wb.Sheets[name]);
+        });
+        entry.text = out;
+      } else if(ext==='pdf'){
+        const buf = await readAsArrayBuffer(f);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const doc = await pdfjsLib.getDocument({data:buf}).promise;
+        let out = '';
+        const maxPages = Math.min(doc.numPages, 25);
+        for(let i=1;i<=maxPages;i++){
+          const page = await doc.getPage(i);
+          const tc = await page.getTextContent();
+          out += tc.items.map(it=>it.str).join(' ') + '\n';
+        }
+        entry.text = out;
+      }
+      entry.status = 'ready';
+    }catch(err){
+      entry.status = 'error';
+      entry.error = err.message;
+    }
+    renderFileList();
+  }
+}
+
+function readAsText(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsText(f); }); }
+function readAsArrayBuffer(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsArrayBuffer(f); }); }
+
+function renderFileList(){
+  fileListEl.innerHTML = '';
+  uploadedFiles.forEach((f,idx)=>{
+    const row = document.createElement('div');
+    row.className = 'filerow';
+    const tagText = f.status==='reading' ? 'reading…' : f.status==='error' ? 'error' : f.kind.toUpperCase();
+    row.innerHTML = `<div class="name"><span class="tag">${tagText}</span> ${f.name}</div><button class="remove" data-idx="${idx}">×</button>`;
+    fileListEl.appendChild(row);
+  });
+  fileListEl.querySelectorAll('.remove').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ uploadedFiles.splice(+btn.dataset.idx,1); renderFileList(); updateAnalyzeBtn(); });
+  });
+  updateAnalyzeBtn();
+}
+function updateAnalyzeBtn(){
+  const ready = uploadedFiles.filter(f=>f.status==='ready');
+  analyzeBtn.disabled = ready.length===0;
+}
+
+/* ============================= CLAUDE EXTRACTION CALL ============================= */
+const SCHEMA_PROMPT = `You are a financial-statement analyst. You will receive raw extracted text/CSV from one or more uploaded financial documents (income statement, balance sheet, cash flow, trial balance, or mixed). Reconcile them into ONE compact JSON model, up to the 4 most recent periods you can find (fewer if that's all there is). Compute any ratio you can derive even if not explicit in the source. If a figure truly cannot be found or derived, use null. Keep all arrays the SAME LENGTH as the "p" periods array, ordered oldest to newest.
+
+Respond with ONLY raw JSON (no markdown fences, no commentary) matching EXACTLY this shape:
+{
+ "co": "company name or best guess",
+ "cur": "currency code, e.g. USD",
+ "p": ["period label", "..."],
+ "is": {"rev":[],"cogs":[],"gp":[],"opex":[],"ebitda":[],"ni":[]},
+ "bs": {"ca":[],"cl":[],"ta":[],"tl":[],"te":[],"cash":[],"inv":[],"debt":[]},
+ "cf": {"ocf":[],"icf":[],"fcf":[],"fcfree":[]},
+ "r": {"gm":[],"nm":[],"cr":[],"qr":[],"de":[],"roe":[],"roa":[],"ic":[]},
+ "v": {"rev":[],"ni":[],"gm":[],"cr":[],"de":[],"roe":[],"ocf":[]},
+ "flags": [],
+ "sum": {"mgmt":"","bank":"","inv":"","aud":""}
+}
+Field meanings: is=income statement (rev revenue, cogs, gp gross profit, opex operating expense, ebitda, ni net income). bs=balance sheet (ca current assets, cl current liabilities, ta total assets, tl total liabilities, te total equity, cash, inv inventory, debt total debt). cf=cash flow (ocf operating, icf investing, fcf financing, fcfree free cash flow = ocf - capex if derivable else ocf). r=ratios (gm gross margin %, nm net margin %, cr current ratio, qr quick ratio, de debt-to-equity, roe %, roa %, ic interest coverage). v=variance notes: for EACH metric, one short string per period explaining the period-over-period change in plain language (max 16 words), citing a likely driver from the source text if mentioned (e.g. one-time charge, price increase, new facility, FX, write-down); the FIRST entry of each array should be "Base period — no prior comparison". If the source gives no explicit reason, infer the most likely driver from the numbers themselves and prefix with "Likely:". flags=3-6 short auditor-relevant anomalies (unusual swings, balance mismatches, negative equity, related-party hints, going-concern language, round-number irregularities). sum=one 2-sentence plain-English narrative per audience (mgmt, bank, inv, aud) synthesizing the story across all periods. Keep every string concise — this must fit in a small response.`;
+
+async function callClaude(userText){
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      system: SCHEMA_PROMPT,
+      messages: [{role:"user", content: userText}]
+    })
+  });
+  const data = await resp.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  let cleaned = text.replace(/```json/gi,'').replace(/```/g,'').trim();
+  const first = cleaned.indexOf('{'); const last = cleaned.lastIndexOf('}');
+  if(first>=0 && last>first) cleaned = cleaned.slice(first,last+1);
+  return JSON.parse(cleaned);
+}
+
+document.getElementById('analyzeBtn').addEventListener('click', analyze);
+document.getElementById('demoBtn').addEventListener('click', ()=>{ financials = demoData(); enterDashboard(); });
+
+/* Auto-load the Infosys Q1 FY27 filing that was analyzed for this session */
+window.addEventListener('DOMContentLoaded', ()=>{
+  financials = infosysData();
+  enterDashboard();
+});
+document.getElementById('backBtn').addEventListener('click', ()=>{
+  document.getElementById('shell').classList.remove('active');
+  document.getElementById('stage').style.display = 'block';
+});
+
+async function analyze(){
+  const ready = uploadedFiles.filter(f=>f.status==='ready');
+  if(ready.length===0) return;
+  analyzeBtn.disabled = true;
+  statusText.innerHTML = '<span class="spinner"></span> Reconciling statements and building your model…';
+  statusText.classList.remove('err');
+  try{
+    let combined = ready.map(f=>`\n=== FILE: ${f.name} ===\n${f.text.slice(0,9000)}`).join('\n');
+    combined = combined.slice(0, 32000);
+    financials = await callClaude(combined);
+    statusText.textContent = '';
+    enterDashboard();
+  }catch(err){
+    statusText.textContent = 'Could not build the model (' + err.message + '). Try again, or use the sample company.';
+    statusText.classList.add('err');
+    analyzeBtn.disabled = false;
+  }
+}
+
+/* ============================= DASHBOARD RENDER ============================= */
+function enterDashboard(){
+  document.getElementById('stage').style.display = 'none';
+  document.getElementById('shell').classList.add('active');
+  const now = new Date();
+  document.getElementById('tsBox').innerHTML = `Analysis current as of<br><b>${now.toLocaleString()}</b>`;
+  document.getElementById('coName').textContent = financials.co || 'Uploaded company';
+  if(financials.pBS){
+    document.getElementById('coPeriods').textContent = `P&L/cash flow: ${(financials.p||[]).join(' → ')}  ·  Balance sheet: ${(financials.pBS||[]).join(' → ')}`;
+  } else {
+    document.getElementById('coPeriods').textContent = (financials.p||[]).join('  ·  ');
+  }
+  renderSummaries();
+  renderMgmt();
+  renderBank();
+  renderInv();
+  renderAud();
+}
+
+function renderSummaries(){
+  const s = financials.sum || {};
+  document.getElementById('sum-mgmt').textContent = s.mgmt || '—';
+  document.getElementById('sum-bank').textContent = s.bank || '—';
+  document.getElementById('sum-inv').textContent = s.inv || '—';
+  document.getElementById('sum-aud').textContent = s.aud || '—';
+}
+
+function fmt(n, cur){
+  if(n===null||n===undefined||isNaN(n)) return '—';
+  if(cur==='₹cr'){
+    return '₹' + n.toLocaleString('en-IN', {maximumFractionDigits:0}) + ' cr';
+  }
+  const abs = Math.abs(n);
+  let val;
+  if(abs>=1e9) val=(n/1e9).toFixed(2)+'B';
+  else if(abs>=1e6) val=(n/1e6).toFixed(2)+'M';
+  else if(abs>=1e3) val=(n/1e3).toFixed(1)+'K';
+  else val = n.toFixed(1);
+  return (cur||'') + ' ' + val;
+}
+function pct(n){ return (n===null||n===undefined||isNaN(n)) ? '—' : n.toFixed(1)+'%'; }
+function last(arr){ return arr && arr.length ? arr[arr.length-1] : null; }
+function prev(arr){ return arr && arr.length>1 ? arr[arr.length-2] : null; }
+function deltaClass(cur,pr){ if(cur==null||pr==null) return 'flat'; return cur>pr?'up':cur<pr?'down':'flat'; }
+function deltaTxt(cur,pr,isPct){
+  if(cur==null||pr==null) return 'no prior period';
+  const d = cur-pr; const arrow = d>0?'▲':d<0?'▼':'▬';
+  if(isPct) return `${arrow} ${Math.abs(d).toFixed(1)} pts vs prior`;
+  const pctd = pr!==0 ? (d/Math.abs(pr)*100) : 0;
+  return `${arrow} ${Math.abs(pctd).toFixed(1)}% vs prior`;
+}
+
+function kpiCard(label, valStr, cur, pr, isPct){
+  return `<div class="kpi"><div class="k-label">${label}</div><div class="k-val">${valStr}</div>
+  <div class="k-delta ${deltaClass(cur,pr)}">${deltaTxt(cur,pr,isPct)}</div></div>`;
+}
+
+function destroy(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+
+function baseOptions(onClick){
+  return {
+    responsive:true, maintainAspectRatio:false,
+    interaction:{ mode:'index', intersect:false },
+    onHover:(evt, elements, chart)=>{ chart.canvas.style.cursor = elements.length ? 'pointer' : 'default'; },
+    plugins:{ legend:{labels:{color:'#ECE7D8', font:{family:'IBM Plex Sans', size:11}}}, tooltip:{titleFont:{family:'IBM Plex Sans'}, bodyFont:{family:'IBM Plex Mono'}} },
+    scales:{
+      x:{ ticks:{color:'#8992A6', font:{family:'IBM Plex Mono', size:11}}, grid:{color:'rgba(237,234,225,0.06)'} },
+      y:{ ticks:{color:'#8992A6', font:{family:'IBM Plex Mono', size:11}}, grid:{color:'rgba(237,234,225,0.08)'} }
+    },
+    onClick: onClick
+  };
+}
+
+function openNote(title, body, label, accent, numsHtml){
+  document.getElementById('noteLabel').textContent = label || 'Variance note';
+  document.getElementById('noteTitle').textContent = title;
+  document.getElementById('noteBody').textContent = body;
+  document.getElementById('noteNums').innerHTML = numsHtml || '';
+  document.getElementById('note').style.borderTop = `4px solid ${accent||'#9A3E22'}`;
+  document.getElementById('note').classList.add('show');
+  document.getElementById('noteOverlay').classList.add('show');
+}
+document.getElementById('noteClose').addEventListener('click', closeNote);
+document.getElementById('noteOverlay').addEventListener('click', closeNote);
+function closeNote(){ document.getElementById('note').classList.remove('show'); document.getElementById('noteOverlay').classList.remove('show'); }
+
+function clickHandler(metricKey, metricLabel, dataArrays, accent, periodsArr){
+  return (evt, elements, chart)=>{
+    if(!elements.length) return;
+    const idx = elements[0].index;
+    const period = (periodsArr || financials.p)[idx];
+    const vArr = (financials.v && financials.v[metricKey]) || [];
+    const reason = vArr[idx] || 'No variance note supplied for this period.';
+    let numsHtml = Object.keys(dataArrays).map(k=>{
+      const v = dataArrays[k][idx];
+      return `${k}: ${typeof v==='number' ? v.toLocaleString(undefined,{maximumFractionDigits:2}) : '—'}`;
+    }).join('<br>');
+    openNote(`${metricLabel} — ${period}`, reason, 'Why it moved', accent, numsHtml);
+  };
+}
+
+/* ---- MANAGEMENT ---- */
+function renderMgmt(){
+  const f = financials, cur=f.cur||'';
+  const rev=f.is.rev||[], opex=f.is.opex||[], ebitda=f.is.ebitda||[], gm=f.r.gm||[], nm=f.r.nm||[], cogs=f.is.cogs||[];
+  document.getElementById('kpi-mgmt').innerHTML =
+    kpiCard('Revenue', fmt(last(rev),cur), last(rev), prev(rev)) +
+    kpiCard('EBITDA', fmt(last(ebitda),cur), last(ebitda), prev(ebitda)) +
+    kpiCard('Gross margin', pct(last(gm)), last(gm), prev(gm), true) +
+    kpiCard('Net margin', pct(last(nm)), last(nm), prev(nm), true);
+
+  const totExp = rev.map((_,i)=>(cogs[i]||0)+(opex[i]||0));
+  destroy('c-mgmt-1');
+  charts['c-mgmt-1'] = new Chart(document.getElementById('c-mgmt-1'), {
+    type:'bar',
+    data:{ labels:f.p, datasets:[
+      {label:'Revenue', data:rev, backgroundColor:'#1F6F54'},
+      {label:'Total expense', data:totExp, backgroundColor:'#C9A227'}
+    ]},
+    options: baseOptions(clickHandler('rev','Revenue', {revenue:rev, total_expense:totExp}, '#1F6F54'))
+  });
+
+  destroy('c-mgmt-2');
+  charts['c-mgmt-2'] = new Chart(document.getElementById('c-mgmt-2'), {
+    type:'line',
+    data:{ labels:f.p, datasets:[
+      {label:'Gross margin %', data:gm, borderColor:'#1F6F54', backgroundColor:'#1F6F54', tension:.3},
+      {label:'Net margin %', data:nm, borderColor:'#C9A227', backgroundColor:'#C9A227', tension:.3}
+    ]},
+    options: baseOptions(clickHandler('gm','Gross margin', {gross_margin:gm, net_margin:nm}, '#1F6F54'))
+  });
+
+  destroy('c-mgmt-3');
+  charts['c-mgmt-3'] = new Chart(document.getElementById('c-mgmt-3'), {
+    type:'line',
+    data:{ labels:f.p, datasets:[{label:'EBITDA', data:ebitda, borderColor:'#EDEAE1', backgroundColor:'rgba(237,234,225,0.15)', fill:true, tension:.3}]},
+    options: baseOptions(clickHandler('ebitda','EBITDA', {ebitda:ebitda}, '#EDEAE1'))
+  });
+
+  destroy('c-mgmt-4');
+  charts['c-mgmt-4'] = new Chart(document.getElementById('c-mgmt-4'), {
+    type:'doughnut',
+    data:{ labels:['COGS','Operating expense'], datasets:[{data:[last(cogs)||0,last(opex)||0], backgroundColor:['#9A3E22','#2C4A66']}]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#ECE7D8'}}} }
+  });
+}
+
+/* ---- BANKERS ---- */
+function renderBank(){
+  const f = financials, cur=f.cur||'';
+  const bsP = f.pBS || f.p;
+  const crr=f.r.cr||[], qr=f.r.qr||[], de=f.r.de||[], ic=f.r.ic||[], ocf=f.cf.ocf||[], icf=f.cf.icf||[], fcf=f.cf.fcf||[];
+  document.getElementById('kpi-bank').innerHTML =
+    kpiCard('Current ratio', (last(crr)!=null?last(crr).toFixed(2):'—'), last(crr), prev(crr)) +
+    kpiCard('Quick ratio', (last(qr)!=null?last(qr).toFixed(2):'—'), last(qr), prev(qr)) +
+    kpiCard('Debt / equity', (last(de)!=null?last(de).toFixed(2):'—'), last(de), prev(de)) +
+    kpiCard('Interest coverage', (last(ic)!=null?last(ic).toFixed(1)+'×':'—'), last(ic), prev(ic));
+
+  destroy('c-bank-1');
+  charts['c-bank-1'] = new Chart(document.getElementById('c-bank-1'), {
+    type:'line',
+    data:{ labels:bsP, datasets:[
+      {label:'Current ratio', data:crr, borderColor:'#2C4A66', backgroundColor:'#2C4A66', tension:.3},
+      {label:'Quick ratio', data:qr, borderColor:'#C9A227', backgroundColor:'#C9A227', tension:.3}
+    ]},
+    options: baseOptions(clickHandler('cr','Current ratio', {current_ratio:crr, quick_ratio:qr}, '#2C4A66', bsP))
+  });
+
+  destroy('c-bank-2');
+  charts['c-bank-2'] = new Chart(document.getElementById('c-bank-2'), {
+    type:'bar',
+    data:{ labels:bsP, datasets:[{label:'Debt / equity', data:de, backgroundColor:'#2C4A66'}]},
+    options: baseOptions(clickHandler('de','Debt / equity', {debt_to_equity:de}, '#2C4A66', bsP))
+  });
+
+  destroy('c-bank-3');
+  charts['c-bank-3'] = new Chart(document.getElementById('c-bank-3'), {
+    type:'bar',
+    data:{ labels:f.p, datasets:[
+      {label:'Operating', data:ocf, backgroundColor:'#1F6F54', stack:'s'},
+      {label:'Investing', data:icf, backgroundColor:'#9A3E22', stack:'s'},
+      {label:'Financing', data:fcf, backgroundColor:'#C9A227', stack:'s'}
+    ]},
+    options: Object.assign(baseOptions(clickHandler('ocf','Operating cash flow', {operating:ocf, investing:icf, financing:fcf}, '#1F6F54')), {scales:{x:{stacked:true, ticks:{color:'#8992A6'}, grid:{display:false}}, y:{stacked:true, ticks:{color:'#8992A6'}, grid:{color:'rgba(237,234,225,0.08)'}}}})
+  });
+
+  destroy('c-bank-4');
+  charts['c-bank-4'] = new Chart(document.getElementById('c-bank-4'), {
+    type:'line',
+    data:{ labels:f.p, datasets:[{label:'Interest coverage ×', data:ic, borderColor:'#EDEAE1', backgroundColor:'rgba(237,234,225,0.15)', fill:true, tension:.3}]},
+    options: baseOptions(clickHandler('ic','Interest coverage', {interest_coverage:ic}, '#EDEAE1'))
+  });
+}
+
+/* ---- INVESTORS ---- */
+function renderInv(){
+  const f = financials, cur=f.cur||'';
+  const ni=f.is.ni||[], roe=f.r.roe||[], roa=f.r.roa||[], rev=f.is.rev||[], fcfree=f.cf.fcfree||[];
+  const growth = rev.map((v,i)=> i===0||rev[i-1]==null||rev[i-1]===0 ? null : ((v-rev[i-1])/Math.abs(rev[i-1])*100));
+  const epsArr = f.eps || null;
+  document.getElementById('kpi-inv').innerHTML =
+    kpiCard('Net income', fmt(last(ni),cur), last(ni), prev(ni)) +
+    (epsArr ? kpiCard('EPS (basic)', (cur==='₹cr'?'₹':cur+' ')+last(epsArr).toFixed(2), last(epsArr), prev(epsArr)) : '') +
+    kpiCard('ROE', pct(last(roe)), last(roe), prev(roe), true) +
+    kpiCard('ROA', pct(last(roa)), last(roa), prev(roa), true) +
+    kpiCard('Revenue growth', pct(last(growth)), last(growth), prev(growth), true);
+
+  destroy('c-inv-1');
+  charts['c-inv-1'] = new Chart(document.getElementById('c-inv-1'), {
+    type:'bar',
+    data:{ labels:f.p, datasets:[{label:'Net income', data:ni, backgroundColor:'#C9A227'}]},
+    options: baseOptions(clickHandler('ni','Net income', {net_income:ni}, '#C9A227'))
+  });
+
+  destroy('c-inv-2');
+  charts['c-inv-2'] = new Chart(document.getElementById('c-inv-2'), {
+    type:'line',
+    data:{ labels:f.p, datasets:[
+      {label:'ROE %', data:roe, borderColor:'#C9A227', backgroundColor:'#C9A227', tension:.3},
+      {label:'ROA %', data:roa, borderColor:'#2C4A66', backgroundColor:'#2C4A66', tension:.3}
+    ]},
+    options: baseOptions(clickHandler('roe','Return on equity', {roe:roe, roa:roa}, '#C9A227'))
+  });
+
+  destroy('c-inv-3');
+  charts['c-inv-3'] = new Chart(document.getElementById('c-inv-3'), {
+    type:'bar',
+    data:{ labels:f.p, datasets:[{label:'Revenue growth %', data:growth, backgroundColor:'#1F6F54'}]},
+    options: baseOptions(clickHandler('rev','Revenue growth', {growth_pct:growth}, '#1F6F54'))
+  });
+
+  destroy('c-inv-4');
+  charts['c-inv-4'] = new Chart(document.getElementById('c-inv-4'), {
+    type:'line',
+    data:{ labels:f.p, datasets:[{label:'Free cash flow', data:fcfree, borderColor:'#EDEAE1', backgroundColor:'rgba(237,234,225,0.15)', fill:true, tension:.3}]},
+    options: baseOptions(clickHandler('ocf','Free cash flow', {free_cash_flow:fcfree}, '#EDEAE1'))
+  });
+}
+
+/* ---- AUDITORS ---- */
+function renderAud(){
+  const f = financials, cur=f.cur||'';
+  const bsP = f.pBS || f.p;
+  const ta=f.bs.ta||[], tl=f.bs.tl||[], te=f.bs.te||[], gm=f.r.gm||[];
+  const gmSwing = gm.map((v,i)=> i===0||gm[i-1]==null||v==null ? null : (v-gm[i-1]));
+  const lPlusE = ta.map((_,i)=> (tl[i]||0)+(te[i]||0));
+  const imbalance = ta.map((v,i)=> v!=null && lPlusE[i]!=null ? Math.abs(v-lPlusE[i]) : null);
+
+  document.getElementById('kpi-aud').innerHTML =
+    kpiCard('Total assets', fmt(last(ta),cur), last(ta), prev(ta)) +
+    kpiCard('Total equity', fmt(last(te),cur), last(te), prev(te)) +
+    kpiCard('Balance check (latest)', fmt(last(imbalance),cur), 0,0,true) +
+    kpiCard('Gross margin swing', (last(gmSwing)!=null? (last(gmSwing)>=0?'+':'')+last(gmSwing).toFixed(1)+' pts':'—'), 0,0,true);
+
+  destroy('c-aud-1');
+  charts['c-aud-1'] = new Chart(document.getElementById('c-aud-1'), {
+    type:'bar',
+    data:{ labels:bsP, datasets:[
+      {label:'Total assets', data:ta, backgroundColor:'#9A3E22'},
+      {label:'Liabilities + equity', data:lPlusE, backgroundColor:'#2C4A66'}
+    ]},
+    options: baseOptions(clickHandler('ni','Balance check', {total_assets:ta, liabilities_plus_equity:lPlusE}, '#9A3E22', bsP))
+  });
+
+  destroy('c-aud-2');
+  charts['c-aud-2'] = new Chart(document.getElementById('c-aud-2'), {
+    type:'bar',
+    data:{ labels:f.p, datasets:[{label:'Gross margin swing, pts', data:gmSwing, backgroundColor:'#C9A227'}]},
+    options: baseOptions(clickHandler('gm','Margin swing', {gm_swing_pts:gmSwing}, '#C9A227'))
+  });
+
+  const flagsEl = document.getElementById('flagList');
+  flagsEl.innerHTML = (f.flags||[]).map(x=>`<li>${x}</li>`).join('') || '<li>No flags returned for this dataset.</li>';
+}
+
+/* ============================= TAB SWITCHING ============================= */
+document.querySelectorAll('.ptab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.persona-panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-'+tab.dataset.p).classList.add('active');
+  });
+});
+
+/* ============================= DEMO DATA ============================= */
+function demoData(){
+  return {
+    co: "Meridian Industrial Corp. (sample data)",
+    cur: "USD",
+    p: ["FY22","FY23","FY24","FY25"],
+    is: {
+      rev:[184000000,201500000,219800000,238600000],
+      cogs:[121400000,134800000,148200000,159200000],
+      gp:[62600000,66700000,71600000,79400000],
+      opex:[38200000,41900000,47500000,49800000],
+      ebitda:[27800000,28300000,28700000,34600000],
+      ni:[14100000,13200000,11800000,18900000]
+    },
+    bs: {
+      ca:[58200000,61400000,64100000,72300000],
+      cl:[41300000,44800000,52600000,49200000],
+      ta:[212400000,224100000,238900000,256700000],
+      tl:[121800000,131200000,148900000,143500000],
+      te:[90600000,92900000,90000000,113200000],
+      cash:[22100000,19800000,15600000,26400000],
+      inv:[24300000,26900000,29800000,28100000],
+      debt:[86500000,93400000,109700000,98100000]
+    },
+    cf: {
+      ocf:[22600000,20100000,16800000,27900000],
+      icf:[-14200000,-15800000,-19400000,-13100000],
+      fcf:[-6100000,2900000,4700000,-8800000],
+      fcfree:[15400000,11600000,6200000,19700000]
+    },
+    r: {
+      gm:[34.0,33.1,32.6,33.3],
+      nm:[7.7,6.6,5.4,7.9],
+      cr:[1.41,1.37,1.22,1.47],
+      qr:[0.82,0.77,0.65,0.90],
+      de:[0.95,1.01,1.22,0.87],
+      roe:[15.6,14.2,13.1,16.7],
+      roa:[6.6,5.9,4.9,7.4],
+      ic:[6.1,5.4,4.2,7.0]
+    },
+    v: {
+      rev:["Base period — no prior comparison","New distribution contract added ~9.5% volume","Price increases offset softer unit demand","Recovered unit demand plus 2 new regional accounts"],
+      ni:["Base period — no prior comparison","Input cost inflation outpaced price increases","One-time facility consolidation charge of $4.1M","Charge did not repeat; operating leverage kicked in"],
+      gm:["Base period — no prior comparison","Likely: raw material costs rose faster than pricing","Freight and energy costs pressured margin further","Procurement contract renegotiation restored margin"],
+      cr:["Base period — no prior comparison","Inventory build ahead of anticipated demand","Short-term debt drawn for facility consolidation","Debt paydown and cash build post one-time charge"],
+      de:["Base period — no prior comparison","Drew revolver to fund working capital growth","Additional term loan for facility consolidation project","Free cash flow used to pay down term debt"],
+      roe:["Base period — no prior comparison","Net income growth lagged equity base growth","One-time charge compressed returns for the year","Charge rolled off; margin recovery lifted returns"],
+      ocf:["Base period — no prior comparison","Working capital build consumed part of earnings","Elevated inventory and receivables reduced conversion","Working capital normalized, conversion improved sharply"]
+    },
+    flags: [
+      "FY24 net income fell while revenue rose — confirm the $4.1M consolidation charge is properly disclosed and non-recurring.",
+      "Quick ratio dipped to 0.65 in FY24 — verify no breach of any lender covenant thresholds.",
+      "Inventory grew faster than COGS in FY23–24 — test for obsolescence or overstatement risk.",
+      "Debt/equity peaked at 1.22 in FY24 then improved sharply — confirm classification of the term loan paydown in financing activities.",
+      "FY25 FCF is negative despite higher OCF — reconcile the capex assumption used to derive free cash flow."
+    ],
+    sum: {
+      mgmt:"Revenue has grown every year, but FY24 margin pressure and a one-off consolidation charge masked underlying progress. FY25's rebound suggests the cost actions are paying off — worth protecting that momentum going into next year.",
+      bank:"Coverage and leverage weakened through FY24 on the facility consolidation, but both reversed sharply in FY25 with debt paydown and improved conversion — the credit story is trending the right direction.",
+      inv:"Returns dipped in FY24 on a non-recurring charge rather than a structural issue, and FY25 shows the business converting growth into profit again — the key question is durability of the margin recovery.",
+      aud:"Most movements trace to a disclosed one-time charge and working-capital timing, but the inventory build, quick-ratio dip and capex assumption behind free cash flow all warrant substantive testing this cycle."
+    }
+  };
+}
+
+/* ============================= REAL FILING: INFOSYS LIMITED, STANDALONE, Q1 FY27 ============================= */
+/* Extracted directly from the uploaded interim condensed standalone financial statements (three months ended
+   June 30, 2026) and the accompanying auditor's report. P&L and cash flow compare Q1 FY27 to Q1 FY26 (same
+   quarter, prior year) as reported. The balance sheet compares June 30, 2026 to March 31, 2026 (last fiscal
+   year end), which is the only balance-sheet comparative this interim filing provides. */
+function infosysData(){
+  return {
+    co: "Infosys Limited — Standalone (Ind AS), all figures ₹ crore",
+    cur: "₹cr",
+    p: ["Q1 FY26 (3M to Jun'25)", "Q1 FY27 (3M to Jun'26)"],
+    pBS: ["FYE Mar 31, 2026", "Q1 FY27 end, Jun 30, 2026"],
+    eps: [14.72, 17.87],
+    is: {
+      rev:[35275, 39957],
+      cogs:[25098, 27777],
+      gp:[10177, 12180],
+      opex:[2399, 2893],
+      ebitda:[9328, 10835],
+      ni:[6114, 7249]
+    },
+    bs: {
+      ca:[80431, 78507],
+      cl:[39637, 39916],
+      ta:[126691, 124470],
+      tl:[45817, 45811],
+      te:[80874, 78659],
+      cash:[8727, 12395],
+      inv:[0, 0],
+      debt:[3749, 3667]
+    },
+    cf: {
+      ocf:[5930, 8755],
+      icf:[5735, 5348],
+      fcf:[-9340, -10437],
+      fcfree:[5222, 8166]
+    },
+    r: {
+      gm:[28.85, 30.49],
+      nm:[17.33, 18.14],
+      cr:[2.03, 1.97],
+      qr:[1.29, 1.20],
+      de:[0.046, 0.047],
+      roe:[null, 9.22],
+      roa:[null, 5.82],
+      ic:[169.6, 177.6]
+    },
+    v: {
+      rev:["Base period — no prior comparison", "Volume growth plus large-deal ramp-ups; management cites broad-based demand across service lines"],
+      ni:["Base period — no prior comparison", "Revenue growth outpaced cost growth despite wage increases, lifting profit ~18.6% YoY"],
+      gm:["Base period — no prior comparison", "Likely: better cost absorption as revenue scaled faster than delivery costs (people, subcontractors, software)"],
+      cr:["Base period — no prior comparison", "Large dividend payout and investment redemptions used for financing outflows trimmed current assets faster than current liabilities"],
+      de:["Base period — no prior comparison", "Essentially unchanged — the company reports carrying no borrowings; only lease liabilities move this ratio"],
+      roe:["Not available — prior-year balance sheet not included in this filing", "Quarterly (not annualized) return; strong profit growth against a fairly stable equity base"],
+      ocf:["Base period — no prior comparison", "Working capital release — trade receivables and unbilled revenue fell while payables held steady, boosting cash conversion"]
+    },
+    flags: [
+      "Auditor's report (Deloitte Haskins & Sells LLP, July 23, 2026) is unmodified — no qualifications, emphasis-of-matter, or going-concern doubt noted.",
+      "A U.S. DOJ investigation into H-1B visa classification for one client's staff is disclosed as an ongoing legal matter with no provision booked — outcome and timing are not yet determinable.",
+      "Income-tax contingent liabilities (claims not acknowledged as debt) rose slightly to ₹1,966 crore from ₹1,944 crore — a recurring item, not a new exposure.",
+      "₹10,143 crore final FY26 dividend was paid this quarter, driving the large net financing outflow — confirm this reconciles to the board/AGM approval dates disclosed in the equity note.",
+      "Two subsidiary acquisitions closed intra-quarter (Stratus Global LLC; Optimum Achieve Holdings) via Infosys Nova Holdings LLC — confirm purchase-price allocation and goodwill will flow through consolidated (not standalone) statements.",
+      "Balance sheet ties out exactly (assets = liabilities + equity) at both dates — no unreconciled variance found."
+    ],
+    sum: {
+      mgmt:"Revenue grew 13.3% year-on-year and delivery margin improved to roughly 30.5%, so growth is translating into profit rather than being absorbed by cost. The main watch item is whether this pace of demand holds up through the rest of the fiscal year.",
+      bank:"This is a fundamentally unlevered balance sheet — the company states it carries no debt, and interest coverage sits well above 150x. The only notable financing item is a large annual dividend outflow, not credit stress.",
+      inv:"EPS rose from ₹14.72 to ₹17.87 (+21.4%) on strong operating leverage. Free cash flow before the dividend was healthy; the dividend itself reflects a deliberate capital-return policy rather than a cash constraint.",
+      aud:"The quarter closes clean: the auditor's opinion is unmodified and the balance sheet reconciles exactly. The two items worth tracking into next quarter are the undetermined DOJ inquiry and purchase accounting for the two mid-quarter acquisitions."
+    }
+  };
+}
+</script>
+</body>
+</html>
