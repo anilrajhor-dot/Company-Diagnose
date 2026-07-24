@@ -227,6 +227,7 @@ input[type=file]{display:none;}
 
   <div class="actions">
     <button class="btn btn-primary" id="analyzeBtn" disabled>Build dashboards</button>
+    <button class="btn btn-ghost" id="infosysBtn">Load Infosys Q1 FY27 (verified figures)</button>
     <button class="btn btn-ghost" id="demoBtn">Use fictional sample company instead</button>
     <span class="status" id="statusText"></span>
   </div>
@@ -450,6 +451,7 @@ async function callClaude(userText){
 
 document.getElementById('analyzeBtn').addEventListener('click', analyze);
 document.getElementById('demoBtn').addEventListener('click', ()=>{ financials = demoData(); enterDashboard(); });
+document.getElementById('infosysBtn').addEventListener('click', ()=>{ financials = infosysData(); financials._source = 'ai'; enterDashboard(); });
 
 document.getElementById('backBtn').addEventListener('click', clearData);
 document.getElementById('exportPdfBtn').addEventListener('click', ()=>{ window.print(); });
