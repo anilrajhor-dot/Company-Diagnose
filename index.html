@@ -179,6 +179,20 @@ input[type=file]{display:none;}
   background:none;border:1px solid rgba(237,234,225,0.2);border-radius:3px;padding:7px 12px;cursor:pointer;
 }
 .small-btn:hover{color:var(--text-ink);border-color:var(--text-ink);}
+
+@media print{
+  body{background:#fff !important;color:#20293A !important;}
+  .spine, .stage, .topbar-actions, .persona-row, .note, .note-overlay{display:none !important;}
+  .shell{display:block !important;padding:0;max-width:100%;}
+  .persona-panel{display:block !important;page-break-after:always;padding-top:6px;}
+  .persona-panel:last-child{page-break-after:auto;}
+  .persona-panel::before{content:attr(data-print-title);display:block;font-family:'Fraunces',serif;font-size:22px;font-weight:600;margin-bottom:14px;color:#20293A;}
+  .card, .kpi{background:#fff !important;border:1px solid #ccc !important;color:#20293A !important;break-inside:avoid;}
+  .kpi .k-label, .card .hint{color:#6B7280 !important;}
+  .kpi .k-val, .card h3{color:#20293A !important;}
+  .summary-strip{background:#F4EFE2 !important;color:#20293A !important;}
+  .flag-list li{background:#fdf1ec !important;color:#5c2a17 !important;}
+}
 </style>
 </head>
 <body>
@@ -226,6 +240,8 @@ input[type=file]{display:none;}
       <h2 class="display" style="margin:4px 0 0;font-size:26px;" id="coPeriods">—</h2>
     </div>
     <div class="topbar-actions">
+      <button class="small-btn" id="exportXlsxBtn">⬇ Export data (.xlsx)</button>
+      <button class="small-btn" id="exportPdfBtn">⬇ Export dashboard (PDF)</button>
       <button class="small-btn" id="backBtn">← Clear data &amp; upload new statements</button>
     </div>
   </div>
@@ -238,7 +254,7 @@ input[type=file]{display:none;}
   </div>
 
   <!-- MANAGEMENT -->
-  <div class="persona-panel active" id="panel-mgmt">
+  <div class="persona-panel active" id="panel-mgmt" data-print-title="Management view">
     <div class="summary-strip" style="--accent:var(--green);"><span class="label">Reading for management</span><span id="sum-mgmt"></span></div>
     <div class="kpi-grid" id="kpi-mgmt" style="--accent:var(--green);"></div>
     <div class="chart-grid">
@@ -252,7 +268,7 @@ input[type=file]{display:none;}
   </div>
 
   <!-- BANKERS -->
-  <div class="persona-panel" id="panel-bank">
+  <div class="persona-panel" id="panel-bank" data-print-title="Bankers view">
     <div class="summary-strip" style="--accent:var(--bank);"><span class="label">Reading for lenders</span><span id="sum-bank"></span></div>
     <div class="kpi-grid" id="kpi-bank" style="--accent:var(--bank);"></div>
     <div class="chart-grid">
@@ -266,7 +282,7 @@ input[type=file]{display:none;}
   </div>
 
   <!-- INVESTORS -->
-  <div class="persona-panel" id="panel-inv">
+  <div class="persona-panel" id="panel-inv" data-print-title="Investors view">
     <div class="summary-strip" style="--accent:var(--gold);"><span class="label">Reading for investors</span><span id="sum-inv"></span></div>
     <div class="kpi-grid" id="kpi-inv" style="--accent:var(--gold);"></div>
     <div class="chart-grid">
@@ -280,7 +296,7 @@ input[type=file]{display:none;}
   </div>
 
   <!-- AUDITORS -->
-  <div class="persona-panel" id="panel-aud">
+  <div class="persona-panel" id="panel-aud" data-print-title="Auditors view">
     <div class="summary-strip" style="--accent:var(--rust);"><span class="label">Reading for auditors</span><span id="sum-aud"></span></div>
     <div class="kpi-grid" id="kpi-aud" style="--accent:var(--rust);"></div>
     <div class="chart-grid">
@@ -435,6 +451,58 @@ document.getElementById('analyzeBtn').addEventListener('click', analyze);
 document.getElementById('demoBtn').addEventListener('click', ()=>{ financials = demoData(); enterDashboard(); });
 
 document.getElementById('backBtn').addEventListener('click', clearData);
+document.getElementById('exportPdfBtn').addEventListener('click', ()=>{ window.print(); });
+document.getElementById('exportXlsxBtn').addEventListener('click', exportExcel);
+
+function sheetFromDict(labelMap, dict, periods){
+  const rows = [['Metric', ...(periods||[])]];
+  Object.keys(labelMap).forEach(k=>{
+    if(dict && dict[k]) rows.push([labelMap[k], ...dict[k]]);
+  });
+  return XLSX.utils.aoa_to_sheet(rows);
+}
+
+function exportExcel(){
+  if(!financials){ return; }
+  const f = financials;
+  const coShort = shortCompanyName(f.co || 'company');
+  const wb = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(wb, sheetFromDict(
+    {rev:'Revenue', cogs:'Cost of revenue (delivery)', gp:'Gross profit', opex:'Other operating expense', ebitda:'EBITDA', ni:'Net income'},
+    f.is, f.p), 'Income Statement');
+
+  XLSX.utils.book_append_sheet(wb, sheetFromDict(
+    {ca:'Current assets', cl:'Current liabilities', ta:'Total assets', tl:'Total liabilities', te:'Total equity', cash:'Cash', inv:'Inventory', debt:'Debt'},
+    f.bs, f.pBS || f.p), 'Balance Sheet');
+
+  XLSX.utils.book_append_sheet(wb, sheetFromDict(
+    {ocf:'Operating cash flow', icf:'Investing cash flow', fcf:'Financing cash flow', fcfree:'Free cash flow'},
+    f.cf, f.p), 'Cash Flow');
+
+  XLSX.utils.book_append_sheet(wb, sheetFromDict(
+    {gm:'Gross margin %', nm:'Net margin %', cr:'Current ratio', qr:'Quick ratio', de:'Debt / equity', roe:'ROE %', roa:'ROA %', ic:'Interest coverage x'},
+    f.r, f.p), 'Ratios');
+
+  const vRows = [['Metric','Period','Variance note']];
+  Object.keys(f.v || {}).forEach(k=>{
+    const arr = f.v[k] || [];
+    const periods = (f.pBS && arr.length === f.pBS.length) ? f.pBS : f.p;
+    arr.forEach((note, i)=> vRows.push([k, (periods||[])[i] || '', note]));
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(vRows), 'Variance notes');
+
+  const flagRows = [['Flag']];
+  (f.flags||[]).forEach(x=>flagRows.push([x]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(flagRows), 'Auditor flags');
+
+  const sumRows = [['Audience','Narrative']];
+  Object.entries(f.sum||{}).forEach(([k,v])=>sumRows.push([k,v]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows), 'Summaries');
+
+  XLSX.writeFile(wb, `${coShort.replace(/\s+/g,'-')}-financial-model.xlsx`);
+}
+
 function clearData(){
   financials = null;
   uploadedFiles = [];
