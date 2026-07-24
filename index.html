@@ -12,6 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --ink:#0B1220; --ink-2:#111B2E; --ink-3:#182643;
@@ -243,7 +244,7 @@ input[type=file]{display:none;}
     </div>
     <div class="topbar-actions">
       <button class="small-btn" id="exportXlsxBtn">⬇ Export data (.xlsx)</button>
-      <button class="small-btn" id="exportPdfBtn">⬇ Export dashboard (PDF)</button>
+      <button class="small-btn" id="exportPdfBtn">⬇ Download dashboard (PDF)</button>
       <button class="small-btn" id="backBtn">← Clear data &amp; upload new statements</button>
     </div>
   </div>
@@ -454,7 +455,84 @@ document.getElementById('demoBtn').addEventListener('click', ()=>{ financials = 
 document.getElementById('infosysBtn').addEventListener('click', ()=>{ financials = infosysData(); financials._source = 'ai'; enterDashboard(); });
 
 document.getElementById('backBtn').addEventListener('click', clearData);
-document.getElementById('exportPdfBtn').addEventListener('click', ()=>{ window.print(); });
+document.getElementById('exportPdfBtn').addEventListener('click', exportPdfFile);
+
+const PERSONA_META = {
+  mgmt:{ label:'Management', accent:[31,111,84], chartIds:['c-mgmt-1','c-mgmt-2','c-mgmt-3','c-mgmt-4'], sumKey:'mgmt' },
+  bank:{ label:'Bankers', accent:[44,74,102], chartIds:['c-bank-1','c-bank-2','c-bank-3','c-bank-4'], sumKey:'bank' },
+  inv:{ label:'Investors', accent:[201,162,39], chartIds:['c-inv-1','c-inv-2','c-inv-3','c-inv-4'], sumKey:'inv' },
+  aud:{ label:'Auditors', accent:[154,62,34], chartIds:['c-aud-1','c-aud-2'], sumKey:'aud' }
+};
+
+function exportPdfFile(){
+  if(!financials || !window.jspdf){ return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const pageW = 210, margin = 16, contentW = pageW - margin*2;
+  const coFull = financials.co || 'Uploaded company';
+  const coShort = shortCompanyName(coFull);
+  const periodLine = financials.pBS
+    ? `P&L/cash flow: ${(financials.p||[]).join(' -> ')}   |   Balance sheet: ${(financials.pBS||[]).join(' -> ')}`
+    : (financials.p||[]).join('   |   ');
+
+  let first = true;
+  Object.keys(PERSONA_META).forEach(key=>{
+    const meta = PERSONA_META[key];
+    if(!first) doc.addPage(); first = false;
+    let y = margin;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(30,30,30);
+    doc.text(coFull, margin, y); y += 7;
+    doc.setFontSize(11); doc.setTextColor(120,120,120); doc.setFont('helvetica','normal');
+    doc.text(periodLine, margin, y, {maxWidth:contentW}); y += 8;
+
+    doc.setFillColor(...meta.accent);
+    doc.rect(margin, y, contentW, 8, 'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text(meta.label + ' view', margin+3, y+5.8);
+    y += 14;
+
+    const summary = (financials.sum && financials.sum[meta.sumKey]) || '';
+    if(summary){
+      doc.setTextColor(40,40,40); doc.setFont('helvetica','italic'); doc.setFontSize(10);
+      const lines = doc.splitTextToSize(summary, contentW);
+      doc.text(lines, margin, y); y += lines.length*4.6 + 6;
+    }
+
+    let col = 0, rowY = y;
+    meta.chartIds.forEach(id=>{
+      const chart = charts[id];
+      if(!chart) return;
+      try{
+        const img = chart.toBase64Image('image/png', 1.0);
+        const imgW = contentW/2 - 3;
+        const imgH = imgW * 0.6;
+        if(rowY + imgH > 280){ doc.addPage(); rowY = margin; col = 0; }
+        const x = margin + col*(imgW+6);
+        doc.addImage(img, 'PNG', x, rowY, imgW, imgH);
+        col++;
+        if(col>1){ col = 0; rowY += imgH + 6; }
+      }catch(e){ /* skip unrendered chart */ }
+    });
+    if(col===1) rowY += (contentW/2-3)*0.6 + 6;
+
+    if(key==='aud' && (financials.flags||[]).length){
+      let fy = rowY + 4;
+      if(fy > 265){ doc.addPage(); fy = margin; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(30,30,30);
+      doc.text('Flags for follow-up', margin, fy); fy += 6;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
+      financials.flags.forEach(flag=>{
+        const lines = doc.splitTextToSize('• ' + flag, contentW);
+        if(fy + lines.length*4.4 > 285){ doc.addPage(); fy = margin; }
+        doc.text(lines, margin, fy); fy += lines.length*4.4 + 2;
+      });
+    }
+  });
+
+  doc.save(`${coShort.replace(/\s+/g,'-')}-dashboard.pdf`);
+}
+
 document.getElementById('exportXlsxBtn').addEventListener('click', exportExcel);
 
 function sheetFromDict(labelMap, dict, periods){
